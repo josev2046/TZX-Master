@@ -1,1 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>ZX81 Unified Studio</title>
+    <style>
+        :root { --bg: #121212; --panel: #1e1e1e; --accent: #00ff00; --text: #e0e0e0; }
+        body { background: var(--bg); color: var(--text); font-family: monospace; margin: 0; display: flex; height: 100vh; overflow: hidden; }
 
+        /* Layout Sections */
+        .sidebar { width: 380px; background: var(--panel); border-right: 2px solid #000; display: flex; flex-direction: column; padding: 20px; box-sizing: border-box; }
+        .main-content { flex-grow: 1; display: flex; flex-direction: column; padding: 20px; box-sizing: border-box; background: var(--bg); }
+
+        /* Preview Stage */
+        #stage { 
+            width: 256px; height: 192px; background: #fff; border: 4px solid #444; 
+            image-rendering: pixelated; margin: 0 auto 20px auto; position: relative;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        }
+        canvas { width: 100%; height: 100%; }
+
+        /* UI Elements */
+        .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; }
+        button { padding: 10px; background: #333; color: #fff; border: 1px solid #555; cursor: pointer; font-weight: bold; font-size: 11px; }
+        button:hover { background: var(--accent); color: #000; }
+        .full-width { grid-column: span 2; }
+        .upload-btn { background: #0055aa; line-height: 35px; text-align: center; cursor: pointer; font-size: 11px; font-weight: bold; }
+
+        textarea { 
+            flex-grow: 1; background: #000; color: var(--accent); border: 1px solid #333; 
+            padding: 15px; font-family: 'Courier New', monospace; font-size: 12px; outline: none;
+        }
+        .header-label { font-size: 10px; color: #888; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 1px; }
+    </style>
+</head>
+<body>
+
+    <div class="sidebar">
+        <h2 style="color: var(--accent); margin: 0 0 20px 0; text-align: center;">ZX81 UNIFIED</h2>
+        
+        <div class="header-label">Hardware Preview (64x48)</div>
+        <div id="stage">
+            <canvas id="canvas" width="64" height="48"></canvas>
+        </div>
+
+        <div class="btn-grid">
+            <label class="upload-btn full-width">
+                📂 CONVERT PHOTO
+                <input type="file" id="loader" accept="image/*" style="display:none" onchange="handleImage(this)">
+            </label>
+            <button onclick="generateBasic()">⚡ GEN BASIC</button>
+            <button onclick="importBasic()" style="background: #6a1b9a;">🔄 IMPORT PLOTS</button>
+            <button onclick="copyCode()">📋 COPY CLIPBOARD</button>
+            <button onclick="clearAll()" class="full-width">🗑️ RESET STAGE</button>
+        </div>
+
+        <div style="margin-top: 20px; font-size: 10px; color: #666; line-height: 1.4;">
+            <b>HOW TO IMPORT:</b><br>
+            Paste your ZX81 BASIC listing (containing PLOT commands) into the editor on the right, then click "IMPORT PLOTS".
+        </div>
+    </div>
+
+    <div class="main-content">
+        <div class="header-label">BASIC Code Editor</div>
+        <textarea id="codeEditor" spellcheck="false" placeholder="Paste ZX81 code here or generate from an image..."></textarea>
+    </div>
+
+    <script>
+        const cvs = document.getElementById('canvas');
+        const ctx = cvs.getContext('2d');
+        const editor = document.getElementById('codeEditor');
+
+        // Initialize with white background
+        ctx.fillStyle = "white";
+        ctx.fillRect(0,0,64,48);
+
+        function handleImage(input) {
+            if (!input.files[0]) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    ctx.fillStyle = "white";
+                    ctx.fillRect(0,0,64,48);
+                    let s = Math.min(64/img.width, 48/img.height);
+                    ctx.drawImage(img, (64 - img.width*s)/2, (48 - img.height*s)/2, img.width*s, img.height*s);
+                    const id = ctx.getImageData(0,0,64,48);
+                    for (let i=0; i<id.data.length; i+=4) {
+                        let v = (id.data[i]+id.data[i+1]+id.data[i+2])/3 < 127 ? 0 : 255;
+                        id.data[i] = id.data[i+1] = id.data[i+2] = v;
+                    }
+                    ctx.putImageData(id, 0,0);
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(input.files[0]);
+        }
+
+        function generateBasic() {
+            let out = "10 FAST\n20 CLS\n";
+            let l = 30;
+            const d = ctx.getImageData(0,0,64,48).data;
+            for(let y=0; y<48; y++) {
+                for(let x=0; x<64; x++) {
+                    if(d[(y*64+x)*4] === 0) {
+                        out += `${l} PLOT ${x},${47-y}\n`;
+                        l += 2;
+                    }
+                }
+            }
+            out += `${l} SLOW\n${l+10} PAUSE 0`;
+            editor.value = out;
+        }
+
+        function importBasic() {
+            const lines = editor.value.split('\n');
+            ctx.fillStyle = "white";
+            ctx.fillRect(0,0,64,48);
+            ctx.fillStyle = "black";
+            let count = 0;
+
+            lines.forEach(line => {
+                // Look for PLOT X,Y
+                const match = line.match(/PLOT\s+(\d+)\s*,\s*(\d+)/i);
+                if(match) {
+                    const x = parseInt(match[1]);
+                    const y = 47 - parseInt(match[2]); // Convert ZX81 Y back to Canvas Y
+                    ctx.fillRect(x, y, 1, 1);
+                    count++;
+                }
+            });
+            if(count > 0) alert(`Successfully imported ${count} PLOTs!`);
+            else alert("No valid PLOT commands found.");
+        }
+
+        function copyCode() {
+            editor.select();
+            document.execCommand('copy');
+        }
+
+        function clearAll() {
+            ctx.fillStyle = "white";
+            ctx.fillRect(0,0,64,48);
+            editor.value = "";
+        }
+    </script>
+</body>
+</html>
