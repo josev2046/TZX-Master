@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>ZX81 Pro Studio: Draw & Convert</title>
+    <style>
+        :root { --bg: #121212; --panel: #1e1e1e; --accent: #00ff00; --text: #e0e0e0; }
+        body { background: var(--bg); color: var(--text); font-family: monospace; margin: 0; display: flex; height: 100vh; overflow: hidden; }
+        .sidebar { width: 380px; background: var(--panel); border-right: 2px solid #000; display: flex; flex-direction: column; padding: 20px; box-sizing: border-box; overflow-y: auto; }
+        .main-content { flex-grow: 1; display: flex; flex-direction: column; padding: 20px; box-sizing: border-box; background: var(--bg); }
+        
+        #stage { 
+            width: 256px; height: 192px; background: #fff; border: 4px solid #444; 
+            image-rendering: pixelated; margin: 0 auto 20px auto; position: relative;
+            cursor: crosshair; touch-action: none;
+        }
+        canvas { width: 100%; height: 100%; pointer-events: none; }
+
+        .tool-selector { display: flex; gap: 5px; margin-bottom: 15px; width: 100%; }
+        .tool-btn { flex: 1; padding: 10px; border: 1px solid #555; background: #333; color: white; cursor: pointer; font-weight: bold; }
+        .tool-btn.active { background: var(--accent); color: #000; border-color: var(--accent); }
+
+        .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; }
+        button { padding: 10px; background: #333; color: #fff; border: 1px solid #555; cursor: pointer; font-weight: bold; font-size: 10px; }
+        button:hover { background: #444; }
+        .p-btn { background: #d32f2f !important; }
+        .wav-btn { background: #2e7d32 !important; grid-column: span 2; font-size: 11px !important; margin-top: 5px; }
+        .upload-btn { background: #0055aa; line-height: 35px; text-align: center; cursor: pointer; font-size: 11px; font-weight: bold; }
+        
+        textarea { flex-grow: 1; background: #000; color: var(--accent); border: 1px solid #333; padding: 15px; font-family: 'Courier New', monospace; font-size: 12px; outline: none; resize: none; }
+        .header-label { font-size: 10px; color: #888; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 1px; }
+        .instruction { font-size: 10px; color: #666; margin-top: 15px; line-height: 1.4; border-top: 1px solid #333; padding-top: 10px; }
+    </style>
+</head>
+<body>
+
+    <div class="sidebar">
+        <h2 style="color: var(--accent); margin: 0 0 20px 0; text-align: center;">ZX81 DRAW-PRO</h2>
+        
+        <div class="header-label">Tool Selection</div>
+        <div class="tool-selector">
+            <button id="penTool" class="tool-btn active" onclick="setTool('black')">INK 🖊️</button>
+            <button id="eraserTool" class="tool-btn" onclick="setTool('white')">ERASE 🧽</button>
+        </div>
+
+        <div id="stage" onmousedown="startDraw(event)" oncontextmenu="return false;">
+            <canvas id="canvas" width="64" height="48"></canvas>
+        </div>
+
+        <div class="btn-grid">
+            <label class="upload-btn" style="grid-column: span 2;">📂 IMPORT PHOTO<input type="file" id="loader" accept="image/*" style="display:none" onchange="handleImage(this)"></label>
+            <button onclick="generate1K()" style="background: #e65100; grid-column: span 2;">⚡ UPDATE BASIC CODE</button>
+            <button onclick="downloadPFile()" class="p-btn">💾 SAVE .P FILE</button>
+            <button onclick="copyCode()">📋 COPY TEXT</button>
+            <button onclick="downloadWav()" class="wav-btn">🔊 DOWNLOAD .WAV (TAPE AUDIO)</button>
+            <button onclick="importBasic()" style="background: #6a1b9a; grid-column: span 2; margin-top:10px">🔄 RE-IMPORT FROM TEXT</button>
+            <button onclick="clearAll()" class="full-width" style="margin-top:10px">🗑️ RESET STAGE</button>
+        </div>
+
+        <div class="instruction">
+            <b>MAC TIPS:</b><br>
+            • Click <b>ERASE</b> above to clear pixels.<br>
+            • <b>Shortcut:</b> Hold <b>Shift</b> while drawing to erase.<br>
+            • lifting the mouse updates the code on the right.
+        </div>
+    </div>
+
+    <div class="main-content">
+        <div class="header-label">BASIC Code Output (1K Optimized)</div>
+        <textarea id="codeEditor" spellcheck="false"></textarea>
+    </div>
+
+    <script>
+        const cvs = document.getElementById('canvas');
+        const ctx = cvs.getContext('2d');
+        const editor = document.getElementById('codeEditor');
+        const stage = document.getElementById('stage');
+
+        let isDrawing = false;
+        let activeColor = "black";
+
+        ctx.fillStyle = "white"; ctx.fillRect(0,0,64,48);
+
+        function setTool(color) {
+            activeColor = color;
+            document.getElementById('penTool').className = color === 'black' ? 'tool-btn active' : 'tool-btn';
+            document.getElementById('eraserTool').className = color === 'white' ? 'tool-btn active' : 'tool-btn';
+        }
+
+        function startDraw(e) {
+            isDrawing = true;
+            draw(e);
+            window.addEventListener('mousemove', draw);
+            window.addEventListener('mouseup', stopDraw);
+        }
+
+        function stopDraw() {
+            isDrawing = false;
+            window.removeEventListener('mousemove', draw);
+            window.removeEventListener('mouseup', stopDraw);
+            generate1K();
+        }
+
+        function draw(e) {
+            if (!isDrawing) return;
+            const rect = stage.getBoundingClientRect();
+            const x = Math.floor((e.clientX - rect.left) / (rect.width / 64));
+            const y = Math.floor((e.clientY - rect.top) / (rect.height / 48));
+            
+            if (x >= 0 && x < 64 && y >= 0 && y < 48) {
+                // If Shift is held, force Erase mode
+                ctx.fillStyle = e.shiftKey ? "white" : activeColor;
+                ctx.fillRect(x, y, 1, 1);
+            }
+        }
+
+        function handleImage(input) {
+            if (!input.files[0]) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    ctx.fillStyle = "white"; ctx.fillRect(0,0,64,48);
+                    let s = Math.min(64/img.width, 48/img.height);
+                    ctx.drawImage(img, (64 - img.width*s)/2, (48 - img.height*s)/2, img.width*s, img.height*s);
+                    const id = ctx.getImageData(0,0,64,48);
+                    for (let i=0; i<id.data.length; i+=4) {
+                        let v = (id.data[i]+id.data[i+1]+id.data[i+2])/3 < 127 ? 0 : 255;
+                        id.data[i] = id.data[i+1] = id.data[i+2] = v;
+                    }
+                    ctx.putImageData(id, 0,0);
+                    generate1K();
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(input.files[0]);
+        }
+
+        function generate1K() {
+            const d = ctx.getImageData(0,0,64,48).data;
+            let dataString = "";
+            for(let y=0; y<48; y++) {
+                for(let x=0; x<64; x++) {
+                    if(d[(y*64+x)*4] === 0) {
+                        dataString += String.fromCharCode(x + 32);
+                        dataString += String.fromCharCode((47-y) + 32);
+                    }
+                }
+            }
+            editor.value = `10 FAST\n20 CLS\n30 LET A$="${dataString}"\n40 FOR N=1 TO LEN A$ STEP 2\n50 PLOT CODE A$(N)-32, CODE A$(N+1)-32\n60 NEXT N\n70 SLOW\n80 PAUSE 0`;
+        }
+
+        function generatePBinary() {
+            const text = editor.value;
+            if(!text) return null;
+            const tokens = {"PLOT":0xf2, "FAST":0xf3, "SLOW":0xf4, "CLS":0xfb, "LET":0xf1, "FOR":0xeb, "TO":0xea, "STEP":0xe9, "NEXT":0xf0, "CODE":0xed, "LEN":0xe3, "PAUSE":0xf5};
+            let program = [];
+            text.split('\n').forEach(line => {
+                const parts = line.match(/^(\d+)\s+(.*)$/);
+                if(!parts) return;
+                let lineNum = parseInt(parts[1]);
+                let content = parts[2];
+                let lineBytes = [];
+                let inString = false;
+                let words = content.split(/(\s+|"|\(|\)|,|=|\$)/);
+                words.forEach(w => {
+                    if(!w) return;
+                    if(w === '"') { inString = !inString; lineBytes.push(0x0b); return; }
+                    if(inString) {
+                        for(let i=0; i<w.length; i++) lineBytes.push(w.charCodeAt(i));
+                    } else if(tokens[w.toUpperCase()]) {
+                        lineBytes.push(tokens[w.toUpperCase()]);
+                    } else {
+                        for(let i=0; i<w.length; i++) {
+                            let c = w.charCodeAt(i);
+                            if(c >= 48 && c <= 57) lineBytes.push(c - 48 + 0x1c);
+                            else if(c >= 65 && c <= 90 || c >= 97 && c <= 122) lineBytes.push((c & 0xdf) - 65 + 0x26);
+                            else if(c == 32) lineBytes.push(0x00);
+                            else if(c == 40) lineBytes.push(0x10);
+                            else if(c == 41) lineBytes.push(0x11);
+                            else if(c == 44) lineBytes.push(0x1a);
+                            else if(c == 61) lineBytes.push(0x14);
+                            else if(c == 36) lineBytes.push(0x0d);
+                            else if(c == 45) lineBytes.push(0x18);
+                        }
+                    }
+                });
+                lineBytes.push(0x76);
+                program.push(lineNum >> 8, lineNum & 0xff, lineBytes.length & 0xff, lineBytes.length >> 8, ...lineBytes);
+            });
+            let header = new Uint8Array(116 + program.length);
+            header[3]=0x40; header[6]=0x7d; 
+            let dfile = 16509 + program.length;
+            header[10]=dfile&0xff; header[11]=dfile>>8; header[14]=(dfile+1)&0xff; header[15]=(dfile+1)>>8;
+            program.forEach((b, i) => header[116+i] = b);
+            return header;
+        }
+
+        function downloadPFile() {
+            const data = generatePBinary();
+            if(!data) return alert("Generate code first!");
+            const blob = new Blob([data], {type: "application/octet-stream"});
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(blob); a.download = "my_art.p"; a.click();
+        }
+
+        function downloadWav() {
+            const pData = generatePBinary();
+            if(!pData) return alert("Generate code first!");
+            const sampleRate = 44100;
+            const pilotLength = sampleRate * 2;
+            let samples = new Float32Array(pilotLength + pData.length * 8 * 100); 
+            let ptr = pilotLength;
+            pData.forEach(byte => {
+                for(let bit=7; bit>=0; bit--) {
+                    let pulses = (byte & (1 << bit)) ? 9 : 4;
+                    for(let p=0; p<pulses; p++) {
+                        for(let s=0; s<7; s++) samples[ptr++] = 0.8;
+                        for(let s=0; s<7; s++) samples[ptr++] = -0.8;
+                    }
+                    ptr += Math.floor(sampleRate * 0.0013);
+                }
+            });
+            const finalBuffer = samples.subarray(0, ptr);
+            const wavHeader = new Uint8Array(44);
+            const view = new DataView(wavHeader.buffer);
+            view.setUint32(0, 0x52494646, false); view.setUint32(4, 36 + finalBuffer.length * 2, true);
+            view.setUint32(8, 0x57415645, false); view.setUint32(12, 0x666d7420, false);
+            view.setUint32(16, 16, true); view.setUint16(20, 1, true);
+            view.setUint16(22, 1, true); view.setUint32(24, sampleRate, true);
+            view.setUint32(28, sampleRate * 2, true); view.setUint16(32, 2, true);
+            view.setUint16(34, 16, true); view.setUint32(36, 0x64617461, false);
+            view.setUint32(40, finalBuffer.length * 2, true);
+            const pcmData = new Int16Array(finalBuffer.length);
+            for(let i=0; i<finalBuffer.length; i++) pcmData[i] = finalBuffer[i] * 32767;
+            const blob = new Blob([wavHeader, pcmData], {type: 'audio/wav'});
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(blob); a.download = "zx81_tape.wav"; a.click();
+        }
+
+        function importBasic() {
+            const lines = editor.value.split('\n');
+            ctx.fillStyle = "white"; ctx.fillRect(0,0,64,48);
+            ctx.fillStyle = "black";
+            const stringLine = lines.find(l => l.includes('LET A$='));
+            if(stringLine) {
+                const strMatch = stringLine.match(/"([^"]*)"/);
+                if(strMatch) {
+                    const str = strMatch[1];
+                    for(let i=0; i<str.length; i+=2) {
+                        ctx.fillRect(str.charCodeAt(i)-32, 47-(str.charCodeAt(i+1)-32), 1, 1);
+                    }
+                }
+            } else {
+                lines.forEach(l => {
+                    const m = l.match(/PLOT\s+(\d+)\s*,\s*(\d+)/i);
+                    if(m) ctx.fillRect(parseInt(m[1]), 47-parseInt(m[2]), 1, 1);
+                });
+            }
+        }
+        function copyCode() { editor.select(); document.execCommand('copy'); }
+        function clearAll() { ctx.fillStyle = "white"; ctx.fillRect(0,0,64,48); editor.value = ""; }
+    </script>
+</body>
+</html>
