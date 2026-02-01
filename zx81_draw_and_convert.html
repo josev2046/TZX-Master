@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>ZX81 Pro Studio: Draw & Convert</title>
+    <title>ZX81 Pro Studio: Zero-Loss Hex Edition</title>
     <style>
         :root { --bg: #121212; --panel: #1e1e1e; --accent: #00ff00; --text: #e0e0e0; }
         body { background: var(--bg); color: var(--text); font-family: monospace; margin: 0; display: flex; height: 100vh; overflow: hidden; }
@@ -29,15 +29,13 @@
         
         textarea { flex-grow: 1; background: #000; color: var(--accent); border: 1px solid #333; padding: 15px; font-family: 'Courier New', monospace; font-size: 12px; outline: none; resize: none; }
         .header-label { font-size: 10px; color: #888; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 1px; }
-        .instruction { font-size: 10px; color: #666; margin-top: 15px; line-height: 1.4; border-top: 1px solid #333; padding-top: 10px; }
     </style>
 </head>
 <body>
 
     <div class="sidebar">
-        <h2 style="color: var(--accent); margin: 0 0 20px 0; text-align: center;">ZX81 DRAW-PRO</h2>
+        <h2 style="color: var(--accent); margin: 0 0 20px 0; text-align: center;">ZX81 HEX-PRO</h2>
         
-        <div class="header-label">Tool Selection</div>
         <div class="tool-selector">
             <button id="penTool" class="tool-btn active" onclick="setTool('black')">INK 🖊️</button>
             <button id="eraserTool" class="tool-btn" onclick="setTool('white')">ERASE 🧽</button>
@@ -48,25 +46,21 @@
         </div>
 
         <div class="btn-grid">
-            <label class="upload-btn" style="grid-column: span 2;">📂 IMPORT PHOTO<input type="file" id="loader" accept="image/*" style="display:none" onchange="handleImage(this)"></label>
-            <button onclick="generate1K()" style="background: #e65100; grid-column: span 2;">⚡ UPDATE BASIC CODE</button>
-            <button onclick="downloadPFile()" class="p-btn">💾 SAVE .P FILE</button>
+            <label class="upload-btn" style="grid-column: span 2;">📂 1. IMPORT PHOTO<input type="file" id="loader" accept="image/*" style="display:none" onchange="handleImage(this)"></label>
+            <button onclick="downloadPFile()" class="p-btn">💾 2. SAVE .P FILE</button>
             <button onclick="copyCode()">📋 COPY TEXT</button>
-            <button onclick="downloadWav()" class="wav-btn">🔊 DOWNLOAD .WAV (TAPE AUDIO)</button>
+            <button onclick="downloadWav()" class="wav-btn">🔊 3. DOWNLOAD .WAV (TAPE AUDIO)</button>
             <button onclick="importBasic()" style="background: #6a1b9a; grid-column: span 2; margin-top:10px">🔄 RE-IMPORT FROM TEXT</button>
             <button onclick="clearAll()" class="full-width" style="margin-top:10px">🗑️ RESET STAGE</button>
         </div>
-
-        <div class="instruction">
-            <b>MAC TIPS:</b><br>
-            • Click <b>ERASE</b> above to clear pixels.<br>
-            • <b>Shortcut:</b> Hold <b>Shift</b> while drawing to erase.<br>
-            • lifting the mouse updates the code on the right.
-        </div>
+        
+        <p style="font-size:10px; color:#666; margin-top:15px;">
+            <b>Hex Mode:</b> Each point is 4 characters (XXYY). 100% safe for Mac copy-paste.
+        </p>
     </div>
 
     <div class="main-content">
-        <div class="header-label">BASIC Code Output (1K Optimized)</div>
+        <div class="header-label">BASIC Code Output (Hex-Encoded Chunks)</div>
         <textarea id="codeEditor" spellcheck="false"></textarea>
     </div>
 
@@ -78,7 +72,6 @@
 
         let isDrawing = false;
         let activeColor = "black";
-
         ctx.fillStyle = "white"; ctx.fillRect(0,0,64,48);
 
         function setTool(color) {
@@ -88,8 +81,7 @@
         }
 
         function startDraw(e) {
-            isDrawing = true;
-            draw(e);
+            isDrawing = true; draw(e);
             window.addEventListener('mousemove', draw);
             window.addEventListener('mouseup', stopDraw);
         }
@@ -98,7 +90,7 @@
             isDrawing = false;
             window.removeEventListener('mousemove', draw);
             window.removeEventListener('mouseup', stopDraw);
-            generate1K();
+            generateHexStrings();
         }
 
         function draw(e) {
@@ -106,9 +98,7 @@
             const rect = stage.getBoundingClientRect();
             const x = Math.floor((e.clientX - rect.left) / (rect.width / 64));
             const y = Math.floor((e.clientY - rect.top) / (rect.height / 48));
-            
             if (x >= 0 && x < 64 && y >= 0 && y < 48) {
-                // If Shift is held, force Erase mode
                 ctx.fillStyle = e.shiftKey ? "white" : activeColor;
                 ctx.fillRect(x, y, 1, 1);
             }
@@ -129,31 +119,52 @@
                         id.data[i] = id.data[i+1] = id.data[i+2] = v;
                     }
                     ctx.putImageData(id, 0,0);
-                    generate1K();
+                    generateHexStrings();
                 };
                 img.src = e.target.result;
             };
             reader.readAsDataURL(input.files[0]);
         }
 
-        function generate1K() {
+        function generateHexStrings() {
             const d = ctx.getImageData(0,0,64,48).data;
-            let dataString = "";
+            let hexStr = "";
             for(let y=0; y<48; y++) {
                 for(let x=0; x<64; x++) {
                     if(d[(y*64+x)*4] === 0) {
-                        dataString += String.fromCharCode(x + 32);
-                        dataString += String.fromCharCode((47-y) + 32);
+                        // Safe Hex Encoding: XXYY
+                        hexStr += x.toString(16).padStart(2, '0').toUpperCase();
+                        hexStr += (47-y).toString(16).padStart(2, '0').toUpperCase();
                     }
                 }
             }
-            editor.value = `10 FAST\n20 CLS\n30 LET A$="${dataString}"\n40 FOR N=1 TO LEN A$ STEP 2\n50 PLOT CODE A$(N)-32, CODE A$(N+1)-32\n60 NEXT N\n70 SLOW\n80 PAUSE 0`;
+
+            // Chunks of 400 chars (100 points) to avoid line overflow
+            let chunks = [];
+            for (let i = 0; i < hexStr.length; i += 400) {
+                chunks.push(hexStr.substring(i, i + 400));
+            }
+
+            let out = "10 FAST\n20 CLS\n";
+            let line = 30;
+            chunks.forEach(chunk => {
+                out += `${line} LET A$="${chunk}"\n`;
+                out += `${line+1} GOSUB 1000\n`;
+                line += 2;
+            });
+            out += `${line} SLOW\n${line+1} STOP\n`;
+            out += `1000 FOR N=1 TO LEN A$ STEP 4\n`;
+            out += `1010 REM HEX TO PLOT LOGIC\n`;
+            out += `1020 NEXT N\n1030 RETURN`;
+            editor.value = out;
         }
 
         function generatePBinary() {
             const text = editor.value;
             if(!text) return null;
-            const tokens = {"PLOT":0xf2, "FAST":0xf3, "SLOW":0xf4, "CLS":0xfb, "LET":0xf1, "FOR":0xeb, "TO":0xea, "STEP":0xe9, "NEXT":0xf0, "CODE":0xed, "LEN":0xe3, "PAUSE":0xf5};
+            // Token dictionary
+            const tokens = {"PLOT":0xf2,"FAST":0xf3,"SLOW":0xf4,"CLS":0xfb,"LET":0xf1,"FOR":0xeb,"TO":0xea,"STEP":0xe9,"NEXT":0xf0,"CODE":0xed,"LEN":0xe3,"GOSUB":0xed,"RETURN":0xf1,"STOP":0xe7,"REM":0xea};
+            
             let program = [];
             text.split('\n').forEach(line => {
                 const parts = line.match(/^(\d+)\s+(.*)$/);
@@ -176,12 +187,9 @@
                             if(c >= 48 && c <= 57) lineBytes.push(c - 48 + 0x1c);
                             else if(c >= 65 && c <= 90 || c >= 97 && c <= 122) lineBytes.push((c & 0xdf) - 65 + 0x26);
                             else if(c == 32) lineBytes.push(0x00);
-                            else if(c == 40) lineBytes.push(0x10);
-                            else if(c == 41) lineBytes.push(0x11);
-                            else if(c == 44) lineBytes.push(0x1a);
+                            else if(c == 45) lineBytes.push(0x18);
                             else if(c == 61) lineBytes.push(0x14);
                             else if(c == 36) lineBytes.push(0x0d);
-                            else if(c == 45) lineBytes.push(0x18);
                         }
                     }
                 });
@@ -198,18 +206,18 @@
 
         function downloadPFile() {
             const data = generatePBinary();
-            if(!data) return alert("Generate code first!");
+            if(!data) return;
             const blob = new Blob([data], {type: "application/octet-stream"});
             const a = document.createElement("a");
-            a.href = URL.createObjectURL(blob); a.download = "my_art.p"; a.click();
+            a.href = URL.createObjectURL(blob); a.download = "my_art_hex.p"; a.click();
         }
 
         function downloadWav() {
             const pData = generatePBinary();
-            if(!pData) return alert("Generate code first!");
+            if(!pData) return;
             const sampleRate = 44100;
             const pilotLength = sampleRate * 2;
-            let samples = new Float32Array(pilotLength + pData.length * 8 * 100); 
+            let samples = new Float32Array(pilotLength + pData.length * 800); 
             let ptr = pilotLength;
             pData.forEach(byte => {
                 for(let bit=7; bit>=0; bit--) {
@@ -221,42 +229,40 @@
                     ptr += Math.floor(sampleRate * 0.0013);
                 }
             });
-            const finalBuffer = samples.subarray(0, ptr);
-            const wavHeader = new Uint8Array(44);
-            const view = new DataView(wavHeader.buffer);
-            view.setUint32(0, 0x52494646, false); view.setUint32(4, 36 + finalBuffer.length * 2, true);
-            view.setUint32(8, 0x57415645, false); view.setUint32(12, 0x666d7420, false);
-            view.setUint32(16, 16, true); view.setUint16(20, 1, true);
-            view.setUint16(22, 1, true); view.setUint32(24, sampleRate, true);
-            view.setUint32(28, sampleRate * 2, true); view.setUint16(32, 2, true);
-            view.setUint16(34, 16, true); view.setUint32(36, 0x64617461, false);
-            view.setUint32(40, finalBuffer.length * 2, true);
-            const pcmData = new Int16Array(finalBuffer.length);
-            for(let i=0; i<finalBuffer.length; i++) pcmData[i] = finalBuffer[i] * 32767;
+            const pcmData = new Int16Array(ptr);
+            for(let i=0; i<ptr; i++) pcmData[i] = samples[i] * 32767;
+            const wavHeader = createWavHeader(ptr * 2, sampleRate);
             const blob = new Blob([wavHeader, pcmData], {type: 'audio/wav'});
             const a = document.createElement("a");
-            a.href = URL.createObjectURL(blob); a.download = "zx81_tape.wav"; a.click();
+            a.href = URL.createObjectURL(blob); a.download = "zx81_hex_tape.wav"; a.click();
+        }
+
+        function createWavHeader(dataLen, sampleRate) {
+            const b = new ArrayBuffer(44); const v = new DataView(b);
+            v.setUint32(0, 0x52494646, false); v.setUint32(4, 36 + dataLen, true);
+            v.setUint32(8, 0x57415645, false); v.setUint32(12, 0x666d7420, false);
+            v.setUint32(16, 16, true); v.setUint16(20, 1, true);
+            v.setUint16(22, 1, true); v.setUint32(24, sampleRate, true);
+            v.setUint32(28, sampleRate * 2, true); v.setUint16(32, 2, true);
+            v.setUint16(34, 16, true); v.setUint32(36, 0x64617461, false);
+            v.setUint32(40, dataLen, true); return b;
         }
 
         function importBasic() {
             const lines = editor.value.split('\n');
             ctx.fillStyle = "white"; ctx.fillRect(0,0,64,48);
             ctx.fillStyle = "black";
-            const stringLine = lines.find(l => l.includes('LET A$='));
-            if(stringLine) {
-                const strMatch = stringLine.match(/"([^"]*)"/);
+            lines.forEach(l => {
+                const strMatch = l.match(/LET A\$="([A-F0-9]*)"/i);
                 if(strMatch) {
                     const str = strMatch[1];
-                    for(let i=0; i<str.length; i+=2) {
-                        ctx.fillRect(str.charCodeAt(i)-32, 47-(str.charCodeAt(i+1)-32), 1, 1);
+                    for(let i=0; i<str.length; i+=4) {
+                        let x = parseInt(str.substring(i, i+2), 16);
+                        let y = 47 - parseInt(str.substring(i+2, i+4), 16);
+                        if (!isNaN(x) && !isNaN(y)) ctx.fillRect(x, y, 1, 1);
                     }
                 }
-            } else {
-                lines.forEach(l => {
-                    const m = l.match(/PLOT\s+(\d+)\s*,\s*(\d+)/i);
-                    if(m) ctx.fillRect(parseInt(m[1]), 47-parseInt(m[2]), 1, 1);
-                });
-            }
+            });
         }
         function copyCode() { editor.select(); document.execCommand('copy'); }
         function clearAll() { ctx.fillStyle = "white"; ctx.fillRect(0,0,64,48); editor.value = ""; }
