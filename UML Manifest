@@ -137,3 +137,78 @@ Mapper -> Export : Passes 6,912-byte memory block
 Export -> Export : Wraps data in TZX header and checksums
 Export -> User : Delivers .tzx tape file
 @endum
+
+--
+
+For the Z81 app:
+
+@startuml
+title ZX81 Image Processing & Hex Conversion
+
+actor User
+participant "Browser Canvas" as Canvas
+participant "Hex Engine" as Hex
+participant "BASIC Editor" as Editor
+
+User -> Canvas : Uploads Image or Draws
+activate Canvas
+Canvas -> Canvas : Downsample to 64x48
+Canvas -> Canvas : Apply Grayscale Threshold\n(Average < 127 = Ink)
+Canvas -> Hex : getImageData()
+deactivate Canvas
+
+activate Hex
+loop Every Pixel (y, x)
+    alt Pixel is Black (0x00)
+        Hex -> Hex : Convert X to Hex (XX)
+        Hex -> Hex : Convert (47-Y) to Hex (YY)
+        Hex -> Hex : Append XXYY to Buffer
+    end
+end
+
+Hex -> Hex : Chunk Buffer into\n400-char segments
+Hex -> Editor : Output LET A$="[Chunk]"
+deactivate Hex
+
+@enduml
+
+--
+
+@startuml
+title Binary Compilation & .WAV Generation
+
+participant "BASIC Editor" as Editor
+participant "Binary Compiler" as Bin
+participant "WAV Generator" as WAV
+database "Local Storage" as Disk
+
+Editor -> Bin : Read BASIC Source
+activate Bin
+loop For Each Line
+    Bin -> Bin : Parse Line Number (2-byte)
+    loop For Each Word/Token
+        Bin -> Bin : Map Keyword to ZX81 Token\n(e.g., PLOT -> 0xF2)
+        Bin -> Bin : Map Alphanumeric to\nZX81 Character Set
+    end
+    Bin -> Bin : Append EOL (0x76)
+end
+Bin -> Bin : Wrap with .P System Variables\n(Header & D-File)
+Bin -> WAV : Pass Uint8Array
+deactivate Bin
+
+activate WAV
+WAV -> WAV : Create 2s Pilot Tone
+loop For Each Byte
+    loop For Each Bit (7 to 0)
+        alt Bit is 1
+            WAV -> WAV : Generate 9 Pulses
+        else Bit is 0
+            WAV -> WAV : Generate 4 Pulses
+        end
+        WAV -> WAV : Insert Pulse Gap (1.3ms)
+    end
+end
+WAV -> Disk : Export .p / .wav Blob
+deactivate WAV
+
+@enduml
