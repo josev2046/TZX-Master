@@ -1,6 +1,6 @@
 # ZX81 Pro Studio: Zero-Loss Hex Edition
 
-An iteration of previous work for creating and exporting low-resolution graphics for the **Sinclair ZX81**. It bridges the gap between modern hardware and 1980s computing by converting visual drawings into machine-readable BASIC and audio formats.
+An iteration of previous work for creating and exporting low-resolution graphics for the **Sinclair ZX81** instead of the Speccy (a very different beast, that). It bridges the gap between modern hardware and 1980s computing by converting visual drawings into machine-readable BASIC and audio formats.
 
 ---
 
